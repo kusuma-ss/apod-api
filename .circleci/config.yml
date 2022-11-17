@@ -1,0 +1,62 @@
+version: 2
+jobs:
+  build:
+    docker:
+      #- image: python:3.7.3-stretch
+      - image: python:3-alpine
+    #working_directory: ~/repo
+
+    steps:
+      - checkout
+      - restore_cache:
+          keys:
+            - v1-dependencies-{{ checksum "requirements.txt" }}
+            # fallback to using the latest cache if no exact match is found
+            - v1-dependencies-
+
+      - run:
+          name: install dependencies
+          command: |
+            make setup
+            make install
+            make hadolint
+            
+      - save_cache:
+          paths:
+            - ./venv
+          key: v1-dependencies-{{ checksum "requirements.txt" }}
+
+    
+      - run:
+          name: run lint
+          command: |
+              . .flask/bin/activate
+              make lint 
+            
+
+  upload-docker:
+    docker:
+      - image: docker:17.05.0-ce-git
+    steps:
+      - checkout
+      - setup_remote_docker
+      - run :
+          name: build docker image 
+          command: | 
+            docker build --tag=$$DOCKER_IMAGE_NAME .
+            docker image ls 
+            docker run -p 5000:5000 $$DOCKER_IMAGE_NAME
+          
+      - run : 
+          name: upload docker image 
+          command : | 
+            echo "Docker ID and Image: $$DOCKER_IMAGE_NAME" 
+            docker login -u=$DOCKERHUBUSER_NAME P=$DOCKERHUP_PASSWORD
+            docker tag $DOCKER_IMAGE_NAME $DOCKERHUBUSER_NAME/$DOCKER_IMAGE_NAME:$CIRCLE_WORKFLOW_ID
+            docker push $DOCKERHUBUSER_NAME/$DOCKER_IMAGE_NAME:$CIRCLE_WORKFLOW_ID
+
+workflows:
+  completeflow:
+    jobs:
+      - build
+      
