@@ -17,6 +17,7 @@ jobs:
       - run:
           name: install dependencies
           command: |
+            cd ..
             make setup
             make install
             make hadolint
