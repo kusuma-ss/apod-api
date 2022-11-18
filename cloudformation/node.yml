@@ -1,0 +1,113 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Amazon EKS Cluster - data Plane '
+
+Parameters:
+  EnvironmentName:
+    Description: An Environment name that will be prefixed to resources
+    Default: capstone-project
+    Type: String
+
+  ProjectName:
+    Description: Porject name, used for resource tagging 
+    Type: String
+
+
+Mappings:
+  ServicePrincipals:
+    aws-cn:
+      ec2: ec2.amazonaws.com.cn
+    aws:
+      ec2: ec2.amazonaws.com
+
+Resources:
+  S3ReadOnlyAccessEC2:
+    Type: "AWS::IAM::Role"
+    Properties: 
+      AssumeRolePolicyDocument: 
+        Version: "2012-10-17"
+        Statement: 
+          - 
+            Effect: "Allow"
+            Principal: 
+              Service: 
+                - "ec2.amazonaws.com"
+            Action: 
+              - "sts:AssumeRole"
+      Path: "/"
+
+  S3AccessPolicy: 
+    Type: "AWS::IAM::Policy"
+    Properties: 
+      PolicyName: "AmazonS3ReadOnlyAccess"
+      PolicyDocument: 
+        Version: "2012-10-17"
+        Statement: 
+          - 
+            Effect: "Allow"
+            Action: "*"
+            Resource: "*"
+      Roles: 
+        - 
+          Ref: "S3ReadOnlyAccessEC2"
+
+  InstanceProfile: 
+    Type: "AWS::IAM::InstanceProfile"
+    Properties: 
+      Path: "/"
+      Roles: 
+        - !Ref S3ReadOnlyAccessEC2
+
+
+
+
+  NodeInstanceRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      RoleName: !Sub ${EnvironmentName}-nodegroup-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - !FindInMap [ServicePrincipals, !Ref "AWS::Partition", ec2]
+            Action:
+              - "sts:AssumeRole"
+      ManagedPolicyArns:
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/AmazonEKSWorkerNodePolicy"
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/AmazonEKS_CNI_Policy"
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
+      Path: /
+
+  NodeGroup:
+    Type: AWS::EKS::Nodegroup
+    Properties:
+      ClusterName: !Sub ${ProjectName}-Cluster
+      NodeRole: !GetAtt NodeInstanceRole.Arn
+      NodegroupName: !Sub ${ProjectName}-nodegroup
+      ScalingConfig:
+        MinSize: 2
+        MaxSize: 4
+        DesiredSize: 2
+      Subnets:
+        Fn::Split:
+          - ","
+          - Fn::ImportValue:
+              Fn::Sub: ${ProjectName}-PUB-NETS
+      Tags:
+        kubernetes.io/cluster/prod: 'owned' 
+
+Outputs:
+  NodeInstanceRole:
+    Description: The node instance role
+    Value: !GetAtt NodeInstanceRole.Arn
+    Export:
+      Name: !Sub ${EnvironmentName}-IR
+
+  NodeGroup:
+    Description: The node group for EKS
+    Value: !Ref NodeGroup
+    Export:
+      Name: !Sub ${EnvironmentName}-NG
+

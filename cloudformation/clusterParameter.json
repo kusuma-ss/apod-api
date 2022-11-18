@@ -1,0 +1,10 @@
+[
+	{
+		"ParameterKey": "EnvironmentName",
+		"ParameterValue": "CloudDevOps"
+	},
+    {
+        "ParameterKey": "ProjectName",
+        "ParameterValue": "Udacitycapstone"
+    }
+]

@@ -1,0 +1,84 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Amazon EKS Cluster - Control Plane '
+
+Parameters:
+  EnvironmentName:
+    Description: Environment name, used as a prefix for resources
+    Type: String 
+
+  ProjectName: 
+    Description: Project name for resource tagging
+    Type: String
+
+Resources:    
+  ClusterRole:
+    Description: Allows EKS to manage clusters on your behalf.
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+            Effect: Allow
+            Principal:
+              Service:
+                - eks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns: 
+        - arn:aws:iam::aws:policy/AmazonEKSClusterPolicy
+        - arn:aws:iam::aws:policy/AmazonEKSServicePolicy
+      Path: "/"
+
+  ClusterControlPlaneSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Cluster communication with worker nodes
+      VpcId:
+        Fn::ImportValue:
+          !Sub "${ProjectName}-VPCID"
+    
+  ControlPlane:
+    Type: "AWS::EKS::Cluster"
+    Properties:
+      Name: !Sub "${ProjectName}-Cluster"
+      Version: "1.23"
+      RoleArn: !GetAtt ClusterRole.Arn
+      ResourcesVpcConfig:
+        SecurityGroupIds:
+          - !Ref ClusterControlPlaneSecurityGroup
+        SubnetIds:
+          - Fn::ImportValue:
+              !Sub "${ProjectName}-PRIV-SN-1"
+          - Fn::ImportValue:
+              !Sub "${ProjectName}-PRIV-SN-2"
+          - Fn::ImportValue:
+              !Sub "${ProjectName}-PUB-SN-1"
+          - Fn::ImportValue:
+              !Sub "${ProjectName}-PUB-SN-2"
+
+Outputs:
+  ClusterName:
+    Value: !Ref ControlPlane
+    Description: Control Plane Name
+    Export:
+      Name: !Sub "${ProjectName}-Cluster"
+
+  ClusterArn:
+    Value: !GetAtt ControlPlane.Arn
+    Description: Cluster Arn
+    Export:
+      Name: !Sub "${ProjectName}-ClusterArn"
+
+  ClusterEndpoint:
+    Value: !GetAtt ControlPlane.Endpoint
+    Description: Cluster Endpoint
+    Export:
+      Name:
+        Fn::Sub: "${AWS::StackName}-ClusterEndpoint"
+
+  ClusterControlPlaneSecurityGroup:
+    Value: !Ref ClusterControlPlaneSecurityGroup
+    Description: ClusterControlPlaneSecurityGroup
+    Export:
+      Name:
+        Fn::Sub: "${AWS::StackName}-ClusterControlPlaneSecurityGroup"

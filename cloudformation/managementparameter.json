@@ -1,0 +1,14 @@
+[
+	{
+		"ParameterKey": "EnvironmentName",
+		"ParameterValue": "CloudDevOps"
+	},
+    {
+        "ParameterKey": "ProjectName",
+        "ParameterValue": "Udacitycapstone"
+    },
+    {
+        "ParameterKey": "AmiImageId",
+        "ParameterValue": "ami-0b0dcb5067f052a63"
+    }
+]

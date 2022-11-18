@@ -1,0 +1,78 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Amazon EKS loadbalaner '
+
+Parameters:
+  WorkflowID:
+    Description: Unique identifier.
+    Type: String
+
+  ProjectName:
+    Description: projectname for our project
+    Type: String
+    Default: Udacitycapstone
+
+Resources:
+  
+  EKSTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+        HealthCheckIntervalSeconds: 10
+        HealthCheckPath: /
+        HealthCheckProtocol: HTTP
+        HealthCheckTimeoutSeconds: 8
+        HealthyThresholdCount: 2
+        Port: 80
+        Protocol: HTTP
+        UnhealthyThresholdCount: 5
+        VpcId: 
+          Fn::ImportValue: 
+            Fn::Sub: "${ProjectName}-VPCID"
+      
+  EKSLB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name : !Sub "loadbalancer-${WorkflowID}"
+      Subnets: 
+      - Fn::ImportValue: !Sub ${ProjectName}-PUB-SN-1
+      - Fn::ImportValue: !Sub ${ProjectName}-PUB-SN-2
+      SecurityGroups: 
+      - Fn::ImportValue: !Sub ${WorkflowID}-LoadBalancerSecurityGrp
+      Tags: 
+        - Key : Name
+          Value : EKS Load Balancer 
+        - Key : ProjectName
+          Value : !Ref ProjectName
+
+  LBListener:
+      Type: AWS::ElasticLoadBalancingV2::Listener
+      Properties:
+          DefaultActions:
+            - Type: forward
+              TargetGroupArn: !Ref EKSTargetGroup
+          LoadBalancerArn: !Ref EKSLB
+          Port: '80'
+          Protocol: HTTP
+
+  LBListenerRule:
+      Type: AWS::ElasticLoadBalancingV2::ListenerRule
+      Properties:
+          Actions:
+          - Type: forward
+            TargetGroupArn: !Ref EKSTargetGroup
+          Conditions:
+          - Field: path-pattern
+            Values: [/]
+          ListenerArn: !Ref LBListener
+          Priority: 1
+#Outputs :
+# UdagramDNS:
+#   Description: DNS of loadbalancer
+#   Value: !Join ["",["http://",!GetAtt EKSLB.DNSName ]]
+Outputs:
+  WorkflowID:
+    Value: !Sub ${WorkflowID}
+    Description: URL for website 
+    Export:
+      Name: WorkflowID
+    

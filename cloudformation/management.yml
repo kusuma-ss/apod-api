@@ -1,0 +1,58 @@
+Description: Creates nodes to manage cluster
+
+Parameters:
+  EnvironmentName:
+    Description: Environment Name
+    Default: capstone
+    Type: String
+  ProjectName: 
+    Description: Project name for resource tagging
+    Type: String
+  SSHKeyName:
+    Description: SSH Key Name
+    Default: udacity
+    Type: String
+  AmiImageId:
+    Description: AMI Id
+    Default: ami-0b0dcb5067f052a63
+    Type: String
+
+Resources:
+  InstanceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub ${EnvironmentName}-management-SecurityGroup
+      GroupDescription: Management Security Group
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+
+  managementNode1:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t2.micro
+      SecurityGroups:
+        - Ref: InstanceSecurityGroup
+      KeyName: !Ref SSHKeyName
+      ImageId: !Ref AmiImageId
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-managementNode1
+        - Key: Project
+          Value: !Ref EnvironmentName
+
+  managementNode2:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t2.micro
+      SecurityGroups:
+        - Ref: InstanceSecurityGroup
+      KeyName: !Ref SSHKeyName
+      ImageId: !Ref AmiImageId
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-managementNode2
+        - Key: Project
+          Value: !Ref EnvironmentName
