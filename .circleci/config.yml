@@ -1,0 +1,173 @@
+version: 2
+jobs:
+  build:
+    docker:
+      #- image: python:3.7.3-stretch
+      - image: python:3-alpine
+    #working_directory: ~/repo
+
+    steps:
+      - checkout
+      - restore_cache:
+          keys:
+            - v1-dependencies-{{ checksum "requirements.txt" }}
+            # fallback to using the latest cache if no exact match is found
+            - v1-dependencies-
+
+      - run:
+          name: install dependencies
+          command: |
+            cd ..
+            make setup
+            make install
+            make hadolint
+            
+      - save_cache:
+          paths:
+            - ./venv
+          key: v1-dependencies-{{ checksum "requirements.txt" }}
+
+    
+      - run:
+          name: run lint
+          command: |
+              . .flask/bin/activate
+              make lint 
+            
+
+  upload-docker:
+    docker:
+      - image: docker:17.05.0-ce-git
+    steps:
+      - checkout
+      - setup_remote_docker
+      - run :
+          name: build docker image 
+          command: | 
+            docker build --tag=$$DOCKER_IMAGE_NAME .
+            docker image ls 
+            docker run -p 5000:5000 $$DOCKER_IMAGE_NAME
+          
+      - run : 
+          name: upload docker image 
+          command : | 
+            echo "Docker ID and Image: $$DOCKER_IMAGE_NAME" 
+            docker login -u=$DOCKERHUBUSER_NAME P=$DOCKERHUP_PASSWORD
+            docker tag $DOCKER_IMAGE_NAME $DOCKERHUBUSER_NAME/$DOCKER_IMAGE_NAME:$CIRCLE_WORKFLOW_ID
+            docker push $DOCKERHUBUSER_NAME/$DOCKER_IMAGE_NAME:$CIRCLE_WORKFLOW_ID
+  create_infrastructure:
+      docker:
+      - image: amazon/aws-cli
+      steps:
+        - checkout
+        - run:
+            name : Ensure network infra exsists
+            command : |
+              aws cloudformation \
+              create-stack --stack-name networkinfra-${CIRCLE_WORKFLOW_ID:0:7}\
+              --template-body file://cloudformation/network.yml \
+              --parameters file://cloudformation/networkparameter.json \
+              --region=us-east-1
+
+        - run: 
+            name: Ensure cluster infra exists
+            command : |
+              aws cloudformation \
+              create-stack --stack-name clusternode-${CIRCLE_WORKFLOW_ID:0:7}\
+              --template-body file://cloudformation/cluster.yml \
+              --parameters-overrides file://cloudformation/clusterparameter.json \
+              --region=us-east-1\
+              --capabilities CAPABILITY_NAMED_IAM
+            no_output_timeout: 15m
+
+        - run: 
+            name: Ensure cluster infra exists
+            command : |
+              aws cloudformation \
+              create-stack --stack-name workernode-${CIRCLE_WORKFLOW_ID:0:7}\
+              --template-body file://cloudformation/node.yml \
+              --parameters-overrides file://cloudformation/nodeparameter.json \
+              --region=us-east-1 \
+              --capabilities CAPABILITY_NAMED_IAM
+
+
+        - run: 
+            name: Ensure management infra exists
+            command : |
+              cd cloudformation
+              aws cloudformation \
+              create-stack --stack-name managementnode-${CIRCLE_WORKFLOW_ID:0:7}\
+              --template-body file://management.yml \
+              --parameters-overrides file://cloudformation/managementparameter.json \
+              --region=us-east-1 \
+              --capabilities CAPABILITY_NAMED_IAM
+
+  LOADbalacer:
+    docker:
+    - image: amazon/aws-cli
+    steps:
+      - checkout
+      - run:
+          name: Store old WorkflowID
+          command: |
+            aws cloudformation \
+            list-exports --query "Exports[?Name==\`WorkflowID\`].Value" \
+            --no-paginate --output text > ~/oldworkflowid.txt
+            export WorkflowID=$(cat ~/oldworkflowid.txt)
+            echo WorkflowID: "$WorkflowID"
+      - persist_to_workspace:
+          root: ~/
+          paths:
+            - oldworkflowid.txt
+      - run:
+          name: loadbalancer installation
+          command: |
+            aws cloudformation \
+            create-stack --stack-name loadbalacer-${CIRCLECI_WORKFLOW_ID}\
+            --template-file file://cloudformation/loadbalancer.yml \
+            --parameter-overrides WorkflowID="${CIRCLE_WORKFLOW_ID:0:7}" \
+            --region=us-east-1
+
+  cleanup:
+    docker:
+      - image: amazon/aws-cli
+    steps:
+      - checkout
+      - run: yum install -y tar gzip
+      - attach_workspace:
+          at: ~/
+      - run:
+          name: Clean up old environment
+          command: |
+            # Fetch the Old workflow ID
+            export OldWorkflowID=$(cat ~/oldworkflowid.txt)
+            CurrentWorkflowID=${CIRCLE_WORKFLOW_ID:0:7}
+            if [[ "$CurrentWorkflowID" != "${OldWorkflowID}" ]]
+            then
+                echo "$OldWorkflowID!=$CurrentWorkflowID => will delete old version"
+                aws cloudformation delete-stack --stack-name "networkinfra_${OldWorkflowID}"
+                aws cloudformation delete-stack --stack-name "clusternode-${OldWorkflowID}"
+                aws cloudformation delete-stack --stack-name "workernode-${OldWorkflowID}"
+            else
+                echo "$OldWorkflowID==$CurrentWorkflowID => nothing needs to be done..."
+            fi
+
+
+
+workflow:
+  default :
+    jobs:
+      - build
+      - create-infrastructure:
+        requires:
+          -build
+      
+
+
+#http://nodei-ekslb-4tlo331idwdy-793128486.us-east-1.elb.amazonaws.com/
+ #http://loadbalacer-${CIRCLECI_WORKFLOW_ID}.us-east-1.elb.amazonaws.com/
+              
+
+
+
+
